@@ -1,0 +1,291 @@
+---
+title: "CK20-CK7 analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Generated on: `r Sys.time()`
+
+Import required packages
+```{r}
+library(tidyverse)
+library(rstatix)
+library(ggpubr)
+library(survival)
+library(survminer)
+```
+
+Globals
+```{r}
+intTumorMeasurementsFn <- "./data/ck20-ck7_measurements.csv"
+clinPatAnnotFn <- "./data/clin_data_annot.csv"
+regressionBySlideFn <- "./data/regression_by_slide.csv"
+```
+
+Import data
+```{r}
+intTumorData <- read_csv(intTumorMeasurementsFn)
+
+intTumorData <- intTumorData %>% rename(image = "Image", class = "Class", dist_to_tumborder = "Distance in um to nearest Tumor border", area_um2 = "Area µm^2")
+intTumorData <- intTumorData %>% mutate(image = str_replace(image, "(_CK20-CK7.ndpi)", ""))
+```
+
+Dimensions of annotated dataset
+```{r}
+paste("Number of images:", length(unique(intTumorData$image)))
+paste("Total number of annotations per class:")
+intTumorData %>% count(class)
+
+numInteractsByImage <- intTumorData %>% filter(class == "CK20-CK7") %>% group_by(image) %>% summarise(num_interactions = n()) %>% arrange(num_interactions)
+head(numInteractsByImage)
+
+ggplot(data=numInteractsByImage, aes(x=reorder(image, -num_interactions), y=num_interactions)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+write.csv(numInteractsByImage, "numInterByImage.csv", row.names = F)
+```
+
+Merge with data in KS cohort studie
+```{r}
+# Obtain list of images and harmonize format with KS Cohort 
+imageList <- intTumorData %>% select(image) %>% summarise(pad = unique(image)) 
+imageList <- imageList %>% mutate(fraction = sub('.*\\-', '', pad))
+imageList <- imageList %>% mutate(pad_ck = pad)
+imageList <- imageList %>% mutate(pad = sub('-[^-]*$', '', pad))
+imageList <- imageList %>% mutate(pad = sub('-', '/20', pad))
+
+# Merge image list with clindata from KS cohort
+clinPatAnnotData <- read.csv(clinPatAnnotFn)
+clinData <- merge(imageList, clinPatAnnotData) %>% select(pad_ck, pad, fraction, id, age, sex, neoadjuvant, replacement_percent, time_fu_os, status_fu_os, time_fu_prog, status_fu_prog)
+clinData <- clinData %>% mutate(id_blocks = paste0(id, "-", fraction))
+head(clinData)
+
+# Obtain %tumor cells for the slide from KS cohort and merge
+regressionBySlide <- read.csv(regressionBySlideFn)
+regressionBySlide <- regressionBySlide %>% mutate(id_blocks = paste0(ids, "-", blocks)) %>% filter(id_blocks %in% clinData$id_blocks)
+dim(regressionBySlide)
+regressionBySlideShort <- regressionBySlide %>% select(id_blocks, percents)
+
+# Correct %tum 0% to 0.5 % (minimal)
+regressionBySlideShort <- regressionBySlideShort %>% mutate(percents = ifelse(percents == 0, 0.5, percents))
+
+clinData <- merge(clinData, regressionBySlideShort)
+clinData <- clinData %>% relocate(id_blocks, .after = id) %>% relocate(percents, .after = neoadjuvant) %>% rename(tum_percent = percents)
+```
+Global density of interactions in viable metastasis area
+```{r}
+totalTumAreaByImage <- intTumorData %>% group_by(image) %>% summarise(tum_area_mm2 = round(sum(area_um2, na.rm = T) / 10^6, 1))
+head(totalTumAreaByImage)
+
+interAreaByImage <- merge(totalTumAreaByImage, numInteractsByImage)
+
+# Add %tumor viable to interaction datac and calculate viable tumor area
+interAreaByImage <- merge(interAreaByImage, select(clinData, pad_ck, tum_percent, id), by.x = "image", by.y = "pad_ck") %>% relocate(tum_percent, .before = num_interactions)
+interAreaByImage <- interAreaByImage %>% mutate(adj_tum_area_mm2 = (tum_area_mm2 / 100 * tum_percent))
+
+# Calculate density of interaction by VIABLE area
+densityInterByImage <-interAreaByImage %>% mutate(density_interacts = num_interactions / adj_tum_area_mm2)
+head(densityInterByImage)
+
+ggplot(data=densityInterByImage, aes(x=reorder(image, -density_interacts), y=density_interacts)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+densityInterByImage2 <- densityInterByImage %>% select(id, num_interactions, adj_tum_area_mm2, density_interacts)
+write.csv(densityInterByImage2, "densityInterByImage.csv", row.names = F)
+```
+
+Obtain progress and repl cohorts and add data on defined groups
+```{r}
+progression_no <- c("T9401-12", "T402-13", "T6136-13", "T1195-14", "T12401-14")
+progression_100d <- c("T4886-13", "T248-13", "T1565-13", "T2956-13", "T10489-13")
+repl_less5 <- c("T4954-13", "T5598-14", "T10187-14", "T11944-14", "T1104-15")
+repl_5_50 <- c("T4246-13", "T10250-13", "T6205-14", "T9989-14", "T7700-12") # Obs "T12503-14" not in Manuela's images
+repl_more95 <- c("T8572-13", "T4041-14", "T12544-14")
+
+densityInterByImage <- densityInterByImage %>% mutate(pad = sub('-[^-]*$', '', image)) %>% relocate(pad, .after = image)
+
+# From progress cohort and add subgroup data
+progressCohort <- densityInterByImage %>% filter(pad %in% progression_no | pad %in% progression_100d)
+progressCohort <- progressCohort %>% mutate(progress = ifelse(pad %in% progression_no, "no", "100d"))
+
+# From replacement cohort and add subgroup data
+replacementCohort <- densityInterByImage %>% filter(pad %in% repl_less5 | pad %in% repl_5_50 | pad %in% repl_more95)
+replacementCohort <- replacementCohort %>% mutate(repl = case_when(
+  pad %in% repl_less5 ~ "<5",
+  pad %in% repl_5_50 ~ "5-50",
+  pad %in% repl_more95 ~ ">95"
+))
+```
+
+Analysis progression cohort
+```{r}
+# Summary stats by neoajuvant
+progressCohort %>% group_by(progress) %>% get_summary_stats(density_interacts, type = "full", show = c("n", "median", "mean", "min", "max", "iqr", "sd"))
+
+# Comparisons between no progress and 100d progress groups
+# Unpaired Wilcox-test
+stat.test <- progressCohort %>%
+  wilcox_test(
+    density_interacts ~ progress, paired = FALSE) %>%
+    add_significance("p")
+print(stat.test)
+# Add statistical test p-values
+# Create the plot
+bxp <- ggboxplot(
+  progressCohort, x = "progress", y = "density_interacts",
+  color = "progress", palette = "jco"
+  )
+# Add statistical test p-values
+stat.test1 <- stat.test %>% add_xy_position(x = "")
+p <- bxp + stat_pvalue_manual(label = "p={round(p,3)} {p.signif}",
+  stat.test1, tip.length = 0) 
+print(p)
+# Effect sizes
+eff_size <- progressCohort %>%
+  wilcox_effsize(
+    density_interacts ~ progress, paired = FALSE)
+print(eff_size)
+```
+
+Analysis replacement cohort
+```{r}
+# Summary stats by neoajuvant
+replacementCohort %>% group_by(repl) %>% get_summary_stats(density_interacts, type = "full", show = c("n", "median", "mean", "min", "max", "iqr", "sd"))
+
+# Comparisons between no progress and 100d progress groups
+# Unpaired Wilcox-test
+stat.test <- replacementCohort %>%
+  kruskal_test(
+    density_interacts ~ repl) %>%
+    add_significance("p")
+print(stat.test)
+# Add statistical test p-values
+
+# Pairwise comparisons
+pwc <- replacementCohort %>% 
+  dunn_test(density_interacts ~ repl, p.adjust.method = "BH") 
+pwc
+
+# Create the plot
+bxp <- ggboxplot(
+  replacementCohort, x = "repl", y = "density_interacts",
+  color = "repl", palette = "jco"
+  ) + 
+  labs(
+    subtitle = get_test_label(stat.test, detailed = TRUE)
+    )
+# Add statistical test p-values
+#stat.test1 <- stat.test %>% add_xy_position(x = "repl")
+#p <- bxp + stat_pvalue_manual(label = "p={round(p,3)} {p.signif}",
+#  stat.test1, tip.length = 0) 
+print(bxp)
+# Effect sizes
+eff_size <- replacementCohort %>%
+  kruskal_effsize(
+    density_interacts ~ repl)
+print(eff_size)
+```
+
+# Survival analysis OS
+```{r}
+#patDataOS$patient_flow <- fct_relevel(patDataOS$patient_flow, "clin surveillance", "direct surgery", "neoadjuvant", "palliative", "best suppcare")
+densityInterByImage <- densityInterByImage %>% mutate(interacts_cat = ifelse(density_interacts > 200, ">200", "<200"))
+densityInterByImageShort <- densityInterByImage %>% select(-pad)
+densityClin <- merge(clinData, densityInterByImageShort, by.x = "pad_ck", by.y = "image")
+
+fit<- survfit(Surv(time_fu_os, status_fu_os) ~ interacts_cat, data = densityClin)
+median_surv <- surv_median(fit)
+median_surv_months <- median_surv %>% mutate_at(vars(median:upper), .funs = funs(. / 365.25)) %>% mutate_if(is.numeric, round, digits=1) %>% rename ('median (years)' = median)
+
+print(median_surv_months)
+
+#names(fit$strata) <- gsub("patient_flow=", "", names(fit$strata))
+ggsurvplot(fit, data = densityClin, pval = TRUE,
+           title = "Overall survival",
+           xlab = "Years",
+           xscale = "d_y",
+           break.time.by=365.25,
+           legend.title = "Density interacts",
+#           risk.table = TRUE
+  ) # https://github.com/kassambara/survminer/issues/166
+```
+
+# Survival analysis Liver specific DFS
+```{r}
+#patDataOS$patient_flow <- fct_relevel(patDataOS$patient_flow, "clin surveillance", "direct surgery", "neoadjuvant", "palliative", "best suppcare")
+#densityInterByImage <- densityInterByImage %>% mutate(interacts_cat = ifelse(density_interacts > 200, ">200", "<200"))
+#densityInterByImageShort <- densityInterByImage %>% select(-pad)
+#densityClin <- merge(clinData, densityInterByImageShort, by.x = "pad_ck", by.y = "image")
+
+fit<- survfit(Surv(time_fu_prog, status_fu_prog) ~ interacts_cat, data = densityClin)
+median_surv <- surv_median(fit)
+median_surv_months <- median_surv %>% mutate_at(vars(median:upper), .funs = funs(. / 365.25)) %>% mutate_if(is.numeric, round, digits=1) %>% rename ('median (years)' = median)
+
+print(median_surv_months)
+
+#names(fit$strata) <- gsub("patient_flow=", "", names(fit$strata))
+ggsurvplot(fit, data = densityClin, pval = TRUE,
+           title = "Liver specific DFS",
+           xlab = "Years",
+           xscale = "d_y",
+           break.time.by=365.25,
+           legend.title = "Density interacts",
+#           risk.table = TRUE
+  ) # https://github.com/kassambara/survminer/issues/166
+```
+
+Analysis by distance to invasion front
+```{r}
+intData <- intTumorData %>% filter(class == "CK20-CK7") %>% select(-area_um2)
+head(intData)
+
+paste("Summary of interaction distances")
+summary(intData$dist_to_tumborder) # Obs, seems to be an interaction at 6 cm from the tumor border, must be an error, needs to be removed
+
+nrow(intData %>% filter(dist_to_tumborder > 9000))
+nrow(intData %>% filter(dist_to_tumborder > 8500)) 
+
+# 8.5 cm could be initial max dist, recheck when complete data 
+intData <- intData %>% filter(dist_to_tumborder < 8500)
+
+# Cut interaction distances to tumor boder into bins
+# set up cut-off values 
+breaks <- seq(0, 8500, by = 100)
+# bucketing values into bins
+intData$dist_to_tumborder_cat <- cut(intData$dist_to_tumborder, breaks=breaks, include.lowest=TRUE, right=FALSE, dig.lab = 4)
+# inspect bins
+summary(intData$dist_to_tumborder_cat)
+
+# Obtain the total number of interactions by image and distance intervals
+numInterbyImageDist <- intData %>% group_by(image, dist_to_tumborder_cat) %>% summarise(num_interactions = n())
+head(numInterbyImageDist)
+
+ggplot(data = numInterbyImageDist, aes(x = dist_to_tumborder_cat, y = num_interactions, group = image, colour = image)) + 
+  geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Number of CK20-CK7 interactions by distance to invasion front") +
+  scale_x_discrete(breaks = levels(numInterbyImageDist$dist_to_tumborder_cat)[c(T, rep(F, 9))])
+
+# Obtain the total number of interactions by distance intervals (all images together)
+numInterbyDist <- intData %>% group_by(dist_to_tumborder_cat) %>% summarise(num_interactions = n())
+head(numInterbyDist)
+
+ggplot(data = numInterbyDist, aes(x = dist_to_tumborder_cat, y = num_interactions, group = 1)) + 
+  geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Total number of CK20-CK7 interactions by distance to invasion front") +
+  scale_x_discrete(breaks = levels(numInterbyImageDist$dist_to_tumborder_cat)[c(T, rep(F, 9))])
+
+# Obtain the average number of interactions by distance intervals (all images together)
+avgInterbyDist <- numInterbyImageDist %>% group_by(dist_to_tumborder_cat) %>% summarise(avg_interactions = mean(num_interactions))
+head(avgInterbyDist)
+
+ggplot(data = avgInterbyDist, aes(x = dist_to_tumborder_cat, y = avg_interactions, group = 1)) + 
+  geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Average number of CK20-CK7 interactions by distance to invasion front") +
+  scale_x_discrete(breaks = levels(numInterbyImageDist$dist_to_tumborder_cat)[c(T, rep(F, 9))])
+```
+
