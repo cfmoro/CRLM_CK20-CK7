@@ -33,22 +33,6 @@ intTumorData <- intTumorData %>% rename(image = "Image", class = "Class", dist_t
 intTumorData <- intTumorData %>% mutate(image = str_replace(image, "(_CK20-CK7.ndpi)", ""))
 ```
 
-Dimensions of annotated dataset
-```{r}
-paste("Number of images:", length(unique(intTumorData$image)))
-paste("Total number of annotations per class:")
-intTumorData %>% count(class)
-
-numInteractsByImage <- intTumorData %>% filter(class == "CK20-CK7") %>% group_by(image) %>% summarise(num_interactions = n()) %>% arrange(num_interactions)
-head(numInteractsByImage)
-
-ggplot(data=numInteractsByImage, aes(x=reorder(image, -num_interactions), y=num_interactions)) +
-  geom_bar(stat="identity", fill="steelblue")+
-  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-write.csv(numInteractsByImage, "numInterByImage.csv", row.names = F)
-```
-
 Merge with data in KS cohort studie
 ```{r}
 # Obtain list of images and harmonize format with KS Cohort 
@@ -76,22 +60,42 @@ regressionBySlideShort <- regressionBySlideShort %>% mutate(percents = ifelse(pe
 clinData <- merge(clinData, regressionBySlideShort)
 clinData <- clinData %>% relocate(id_blocks, .after = id) %>% relocate(percents, .after = neoadjuvant) %>% rename(tum_percent = percents)
 ```
+
+Dimensions of annotated dataset
+```{r}
+paste("Number of images:", length(unique(intTumorData$image)))
+paste("Total number of annotations per class:")
+intTumorData %>% count(class)
+
+numInteractsByImage <- intTumorData %>% filter(class == "CK20-CK7") %>% group_by(image) %>% summarise(num_interactions = n()) %>% arrange(num_interactions)
+idList <- clinData %>% distinct(id, pad_ck) %>% rename(image = "pad_ck")
+numInteractsByImage <- merge(numInteractsByImage, idList)
+head(numInteractsByImage)
+
+ggplot(data=numInteractsByImage, aes(x=reorder(id, -num_interactions), y=num_interactions)) +
+  geom_bar(stat="identity", fill="steelblue")+
+  theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+write.csv(numInteractsByImage, "numInterByImage.csv", row.names = F)
+```
 Global density of interactions in viable metastasis area
 ```{r}
 totalTumAreaByImage <- intTumorData %>% group_by(image) %>% summarise(tum_area_mm2 = round(sum(area_um2, na.rm = T) / 10^6, 1))
 head(totalTumAreaByImage)
 
 interAreaByImage <- merge(totalTumAreaByImage, numInteractsByImage)
+head(interAreaByImage)
 
 # Add %tumor viable to interaction datac and calculate viable tumor area
-interAreaByImage <- merge(interAreaByImage, select(clinData, pad_ck, tum_percent, id), by.x = "image", by.y = "pad_ck") %>% relocate(tum_percent, .before = num_interactions)
+interAreaByImage <- merge(interAreaByImage, select(clinData, pad_ck, tum_percent), by.x = "image", by.y = "pad_ck") %>% relocate(tum_percent, .before = num_interactions)
 interAreaByImage <- interAreaByImage %>% mutate(adj_tum_area_mm2 = (tum_area_mm2 / 100 * tum_percent))
+head(interAreaByImage)
 
 # Calculate density of interaction by VIABLE area
 densityInterByImage <-interAreaByImage %>% mutate(density_interacts = num_interactions / adj_tum_area_mm2)
 head(densityInterByImage)
 
-ggplot(data=densityInterByImage, aes(x=reorder(image, -density_interacts), y=density_interacts)) +
+ggplot(data=densityInterByImage, aes(x=reorder(id, -density_interacts), y=density_interacts)) +
   geom_bar(stat="identity", fill="steelblue")+
   theme_minimal() + theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
@@ -194,9 +198,18 @@ print(eff_size)
 # Survival analysis OS
 ```{r}
 #patDataOS$patient_flow <- fct_relevel(patDataOS$patient_flow, "clin surveillance", "direct surgery", "neoadjuvant", "palliative", "best suppcare")
-densityInterByImage <- densityInterByImage %>% mutate(interacts_cat = ifelse(density_interacts > 200, ">200", "<200"))
-densityInterByImageShort <- densityInterByImage %>% select(-pad)
+densityInterByImage <- densityInterByImage %>% mutate(interacts_cat = ifelse(density_interacts > 20, ">20", "<20"))
+densityInterByImageShort <- densityInterByImage %>% select(-pad, -id)
 densityClin <- merge(clinData, densityInterByImageShort, by.x = "pad_ck", by.y = "image")
+
+# Remove from OS the cases with major responses, where the CK20+ cells are intermixed with ductular reaction - special case
+densityClin <- densityClin %>% filter(!(pad %in% c("T4246/2013", "T10250/2013", "T6205/2014", "T9989/2014", "T7700/2012")))
+
+# Determine optimal cut-off for survival by density_interacts
+# OS
+surv_cutpoint(densityClin, time = "time_fu_os", event = "status_fu_os", variables = c("density_interacts"))
+# DFS
+surv_cutpoint(densityClin, time = "time_fu_prog", event = "status_fu_prog", variables = c("density_interacts")) 
 
 fit<- survfit(Surv(time_fu_os, status_fu_os) ~ interacts_cat, data = densityClin)
 median_surv <- surv_median(fit)
@@ -211,7 +224,9 @@ ggsurvplot(fit, data = densityClin, pval = TRUE,
            xscale = "d_y",
            break.time.by=365.25,
            legend.title = "Density interacts",
-#           risk.table = TRUE
+           risk.table = TRUE,
+           risk.table.y.text = FALSE, 
+           risk.table.height = 0.3
   ) # https://github.com/kassambara/survminer/issues/166
 ```
 
@@ -235,7 +250,9 @@ ggsurvplot(fit, data = densityClin, pval = TRUE,
            xscale = "d_y",
            break.time.by=365.25,
            legend.title = "Density interacts",
-#           risk.table = TRUE
+           risk.table = TRUE,
+           risk.table.y.text = FALSE, 
+           risk.table.height = 0.3
   ) # https://github.com/kassambara/survminer/issues/166
 ```
 
@@ -263,9 +280,11 @@ summary(intData$dist_to_tumborder_cat)
 
 # Obtain the total number of interactions by image and distance intervals
 numInterbyImageDist <- intData %>% group_by(image, dist_to_tumborder_cat) %>% summarise(num_interactions = n())
+numInterbyImageDist <- numInterbyImageDist %>% rowwise() %>% mutate(id = clinData[ clinData$pad_ck ==  image, ]$id)
+numInterbyImageDist$id <- as.factor(numInterbyImageDist$id)
 head(numInterbyImageDist)
 
-ggplot(data = numInterbyImageDist, aes(x = dist_to_tumborder_cat, y = num_interactions, group = image, colour = image)) + 
+ggplot(data = numInterbyImageDist, aes(x = dist_to_tumborder_cat, y = num_interactions, group = id, colour = id)) + 
   geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ggtitle("Number of CK20-CK7 interactions by distance to invasion front") +
   scale_x_discrete(breaks = levels(numInterbyImageDist$dist_to_tumborder_cat)[c(T, rep(F, 9))])
