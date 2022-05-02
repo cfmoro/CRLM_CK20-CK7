@@ -16,6 +16,8 @@ library(rstatix)
 library(ggpubr)
 library(survival)
 library(survminer)
+library(labelled)
+library(gtsummary)
 ```
 
 Globals
@@ -128,8 +130,18 @@ replacementCohort <- replacementCohort %>% mutate(repl = case_when(
 
 Analysis progression cohort
 ```{r}
-# Summary stats by neoajuvant
+# Merge with clinical data
+progressClin <- merge(select(progressCohort, -image, -pad, -tum_percent), clinData, by = "id")
+
+# Clinical table 
+progressClinTable <- progressClin %>% select(age, sex, neoadjuvant, tum_area_mm2, num_interactions, tum_percent, adj_tum_area_mm2, density_interacts, progress)
+var_label(progressClinTable) <- list(age = "Age", sex = "Gender", neoadjuvant = "Neoadjuvany chemotherapy", tum_area_mm2 = "Metastasis area (mm2)", num_interactions = "Number of CK20-CK7 interactions", tum_percent = "Viable tumor (%)", adj_tum_area_mm2 = "Area of viable tumor (mm2)", density_interacts = "CK20-CK7 interactions / mm2 viable tumor", progress = "Progression group")
+
+progressClinTable %>% tbl_summary(type = c(age = "continuous", tum_percent = "continuous"), missing = "no", by = "progress") %>% add_p()
+
+# Summary stats by progress group
 progressCohort %>% group_by(progress) %>% get_summary_stats(density_interacts, type = "full", show = c("n", "median", "mean", "min", "max", "iqr", "sd"))
+# type = c(age = "continuous", time_diagn_to_op = "continuous", time_remiss_to_eus = "continuous", time_eus_to_diagn = "continuous")
 
 # Comparisons between no progress and 100d progress groups
 # Unpaired Wilcox-test
@@ -158,6 +170,15 @@ print(eff_size)
 
 Analysis replacement cohort
 ```{r}
+# Merge with clinical data
+replacementClin <- merge(select(replacementCohort, -image, -pad, -tum_percent), clinData, by = "id")
+
+# Clinical table 
+replacementClinTable <- replacementClin %>% select(age, sex, neoadjuvant, tum_area_mm2, num_interactions, tum_percent, adj_tum_area_mm2, density_interacts, repl)
+var_label(replacementClinTable) <- list(age = "Age", sex = "Gender", neoadjuvant = "Neoadjuvany chemotherapy", tum_area_mm2 = "Metastasis area (mm2)", num_interactions = "Number of CK20-CK7 interactions", tum_percent = "Viable tumor (%)", adj_tum_area_mm2 = "Area of viable tumor (mm2)", density_interacts = "CK20-CK7 interactions / mm2 of viable tumor", repl = "Replacement group")
+
+replacementClinTable %>% tbl_summary(type = c(age = "continuous", tum_percent = "continuous"), missing = "no", by = "repl") %>% add_p()
+
 # Summary stats by neoajuvant
 replacementCohort %>% group_by(repl) %>% get_summary_stats(density_interacts, type = "full", show = c("n", "median", "mean", "min", "max", "iqr", "sd"))
 
