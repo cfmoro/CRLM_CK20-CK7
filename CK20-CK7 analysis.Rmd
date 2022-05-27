@@ -282,6 +282,10 @@ Analysis by distance to invasion front
 intData <- intTumorData %>% filter(class == "CK20-CK7") %>% select(-area_um2)
 head(intData)
 
+boxplot(intTumorData$dist_to_tumborder,
+        horizontal = TRUE, 
+        log = "x")
+
 paste("Summary of interaction distances")
 summary(intData$dist_to_tumborder) # Obs, seems to be an interaction at 6 cm from the tumor border, must be an error, needs to be removed
 
