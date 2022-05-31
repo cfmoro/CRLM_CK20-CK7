@@ -409,30 +409,116 @@ o.prog <- order(allClin$time_fu_prog,decreasing=TRUE,na.last=NA)
 allClin.ordered.prog <- allClin[o.prog,]
 
 # overall survival + colours for chemotherapy Y/N
-col.Water <- ifelse(allClin.ordered.os$neoadjuvant == "Y", "#BC5A42", "#009296")
-barplot(allClin.ordered.os$time_fu_os, col=col.Water, border=col.Water, space=0.5,
+col1.Water <- ifelse(allClin.ordered.os$neoadjuvant == "Y", "#BC5A42", "#009296")
+barplot(allClin.ordered.os$time_fu_os, col=col1.Water, border=col1.Water, space=0.5,
 main = "Overall survival", ylab="survival [days]",
 cex.axis=1.0, cex.lab=1.0, legend.text=c("Neoadjuvant","Chemonaive"),
 args.legend=list(fill=c("#BC5A42","#009296"), border=NA, cex=0.9))
 
 # progression-free + colours for chemotherapy Y/N
-col.Water <- ifelse(allClin.ordered.prog$neoadjuvant == "Y", "#BC5A42", "#009296")
-barplot(allClin.ordered.prog$time_fu_prog, col=col.Water, border=col.Water, space=0.5,
+col2.Water <- ifelse(allClin.ordered.prog$neoadjuvant == "Y", "#BC5A42", "#009296")
+barplot(allClin.ordered.prog$time_fu_prog, col=col2.Water, border=col2.Water, space=0.5,
 main = "Progression-free survival", ylab="time to progression [days]",
 cex.axis=1.0, cex.lab=1.0, legend.text=c("Neoadjuvant","Chemonaive"),
 args.legend=list(fill=c("#BC5A42","#009296"), border=NA, cex=0.9))
 
 # overall survival + colours for % replacement growth pattern
-col2.Water <- ifelse(allClin.ordered.os$replacement_percent >= 85, "#BC5A42", ifelse(allClin.ordered.os$replacement_percent <= 5, "#009296", "#F8B195"))
-barplot(allClin.ordered.os$time_fu_os, col=col2.Water, border=col2.Water, space=0.5,
+col3.Water <- ifelse(allClin.ordered.os$replacement_percent >= 85, "#BC5A42", ifelse(allClin.ordered.os$replacement_percent <= 5, "#009296", "#F8B195"))
+barplot(allClin.ordered.os$time_fu_os, col=col3.Water, border=col3.Water, space=0.5,
 main = "Overall survival", ylab="survival [days]",
 cex.axis=1.0, cex.lab=1.0, legend.text=c("> 85 % replacement","5 - 85 % replacement", "< 5 % replacement"),
 args.legend=list(fill=c("#BC5A42","#F8B195", "#009296"), border=NA, cex=0.9))
 
 # progression-free survival + colours for % replacement growth pattern
-col2.Water <- ifelse(allClin.ordered.prog$replacement_percent >= 85, "#BC5A42", ifelse(allClin.ordered.prog$replacement_percent <= 5, "#009296", "#F8B195"))
-barplot(allClin.ordered.prog$time_fu_prog, col=col2.Water, border=col2.Water, space=0.5,
-main = "Prodression-free survival", ylab="time to progression [days]",
+col4.Water <- ifelse(allClin.ordered.prog$replacement_percent >= 85, "#BC5A42", ifelse(allClin.ordered.prog$replacement_percent <= 5, "#009296", "#F8B195"))
+barplot(allClin.ordered.prog$time_fu_prog, col=col4.Water, border=col4.Water, space=0.5,
+main = "Progression-free survival", ylab="time to progression [days]",
 cex.axis=1.0, cex.lab=1.0, legend.text=c("> 85 % replacement","5 - 85 % replacement", "< 5 % replacement"),
 args.legend=list(fill=c("#BC5A42","#F8B195", "#009296"), border=NA, cex=0.9))
+
+# overall survival + colours for density CK7-CK20 interactions
+# abline (lines) mark the samples that are removed in the plots with only >5% replacement cases
+
+boxplot(allClin$density_interacts, # ~ allClin$neoadjuvant, 
+        horizontal = TRUE)
+hist(subset(allClin, replacement_percent >= 5)$density_interacts, breaks = 5)
+
+col5.Water <- ifelse(allClin.ordered.os$density_interacts >= 200, "#CA562C", ifelse(allClin.ordered.os$density_interacts >= 150, "#EDBB8A", ifelse(allClin.ordered.os$density_interacts >= 100, "#F6EDBD", ifelse(allClin.ordered.os$density_interacts >= 50, "#B4C8A8", "#008080"))))
+
+barplot(allClin.ordered.os$time_fu_os, 
+        col=col5.Water, 
+        border=col5.Water, 
+        space=0.5,
+        main = "Overall survival\nall Cases (n=23)", 
+        cex.main=0.95, 
+        ylab="survival [days]",
+        cex.axis=0.8, 
+        cex.lab=1.0, 
+        legend.text=c("> 200","150 - 200", "100 - 150", "50 - 100", "< 50"),
+        args.legend=list(title = "CK20-CK7 interactions\n / mm2 viable tumor", 
+                         fill=c("#CA562C","#EDBB8A", "#F6EDBD", "#B4C8A8", "#008080"), 
+                         cex=0.85, 
+                         bty = "n")
+        )
+#abline(h=c(634,2852,2691,2728,217))
+
+col6.Water <- ifelse(subset(allClin.ordered.os, replacement_percent >= 5)$density_interacts >= 200, "#CA562C", ifelse(subset(allClin.ordered.os, replacement_percent >= 5)$density_interacts >= 150, "#EDBB8A", ifelse(subset(allClin.ordered.os, replacement_percent >= 5)$density_interacts >= 100, "#F6EDBD", ifelse(subset(allClin.ordered.os, replacement_percent >= 5)$density_interacts >= 50, "#B4C8A8", "#008080"))))
+
+barplot(subset(allClin.ordered.os, replacement_percent >= 5)$time_fu_os, 
+        col=col6.Water, 
+        border=col6.Water, 
+        space=0.5,
+        main = "Overall survival\n>5 % Replacement (n=18)", 
+        cex.main=0.95, 
+        ylab="survival [days]",
+        cex.axis=0.8, 
+        cex.lab=1.0, 
+        legend.text=c("> 200","150 - 200", "100 - 150", "50 - 100", "< 50"),
+        args.legend=list(title = "CK20-CK7 interactions\n / mm2 viable tumor", 
+                         fill=c("#CA562C","#EDBB8A", "#F6EDBD", "#B4C8A8", "#008080"), 
+                         cex=0.85, 
+                         bty = "n")
+        )
+#abline(h=c(634,2852,2691,2728,217))
+
+# progression-free survival + colours for density CK7-CK20 interactions
+# abline (lines) mark the samples that are removed in the plots with only >5% replacement cases
+
+col7.Water <- ifelse(allClin.ordered.prog$density_interacts >= 200, "#CA562C", ifelse(allClin.ordered.prog$density_interacts >= 150, "#EDBB8A", ifelse(allClin.ordered.prog$density_interacts >= 100, "#F6EDBD", ifelse(allClin.ordered.prog$density_interacts >= 50, "#B4C8A8", "#008080"))))
+
+barplot(allClin.ordered.prog$time_fu_prog, 
+        col=col7.Water, 
+        border=col7.Water, 
+        space=0.5,
+        main = "Progression-free survival\nall Cases (n=23)", 
+        cex.main=0.95, 
+        ylab="time to progression [days]",
+        cex.axis=0.8, 
+        cex.lab=1.0, 
+        legend.text=c("> 200","150 - 200", "100 - 150", "50 - 100", "< 50"),
+        args.legend=list(title = "CK20-CK7 interactions\n / mm2 viable tumor", 
+                         fill=c("#CA562C","#EDBB8A", "#F6EDBD", "#B4C8A8", "#008080"), 
+                         cex=0.85, 
+                         bty = "n")
+        )
+#abline(h=c(261,2852,2691,2728,217))
+
+col8.Water <- ifelse(subset(allClin.ordered.prog, replacement_percent >= 5)$density_interacts >= 200, "#CA562C", ifelse(subset(allClin.ordered.prog, replacement_percent >= 5)$density_interacts >= 150, "#EDBB8A", ifelse(subset(allClin.ordered.prog, replacement_percent >= 5)$density_interacts >= 100, "#F6EDBD", ifelse(subset(allClin.ordered.prog, replacement_percent >= 5)$density_interacts >= 50, "#B4C8A8", "#008080"))))
+
+barplot(subset(allClin.ordered.prog, replacement_percent >= 5)$time_fu_prog, 
+        col=col8.Water, 
+        border=col8.Water, 
+        space=0.5,
+        main = "Progression-free survival\n>5 % Replacement (n=18)", 
+        cex.main=0.95, 
+        ylab="time to progression [days]",
+        cex.axis=0.8, 
+        cex.lab=1.0, 
+        legend.text=c("> 200","150 - 200", "100 - 150", "50 - 100", "< 50"),
+        args.legend=list(title = "CK20-CK7 interactions\n / mm2 viable tumor", 
+                         fill=c("#CA562C","#EDBB8A", "#F6EDBD", "#B4C8A8", "#008080"), 
+                         cex=0.85, 
+                         bty = "n")
+        )
+#abline(h=c(261,2852,2691,2728,217))
 ```
