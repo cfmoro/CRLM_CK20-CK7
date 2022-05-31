@@ -18,6 +18,7 @@ library(survival)
 library(survminer)
 library(labelled)
 library(gtsummary)
+library(ggplot2)
 ```
 
 Globals
@@ -282,9 +283,9 @@ Analysis by distance to invasion front
 intData <- intTumorData %>% filter(class == "CK20-CK7") %>% select(-area_um2)
 head(intData)
 
-boxplot(intTumorData$dist_to_tumborder,
-        horizontal = TRUE, 
-        log = "x")
+boxplot(intData$dist_to_tumborder ~ intData$image)#, 
+        #log = "y")
+abline(h=8500)
 
 paste("Summary of interaction distances")
 summary(intData$dist_to_tumborder) # Obs, seems to be an interaction at 6 cm from the tumor border, must be an error, needs to be removed
@@ -294,6 +295,10 @@ nrow(intData %>% filter(dist_to_tumborder > 8500))
 
 # 8.5 cm could be initial max dist, recheck when complete data 
 intData <- intData %>% filter(dist_to_tumborder < 8500)
+
+boxplot(intData$dist_to_tumborder ~ intData$image, 
+        horizontal = TRUE)
+hist(intData$dist_to_tumborder, breaks = 100)
 
 # Cut interaction distances to tumor boder into bins
 # set up cut-off values 
@@ -331,5 +336,19 @@ ggplot(data = avgInterbyDist, aes(x = dist_to_tumborder_cat, y = avg_interaction
   geom_line() + theme_bw() + theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   ggtitle("Average number of CK20-CK7 interactions by distance to invasion front") +
   scale_x_discrete(breaks = levels(numInterbyImageDist$dist_to_tumborder_cat)[c(T, rep(F, 9))])
+```
+
+Correlation analysis: interactions per image <-> growth pattern 
+```{r}
+library("ggpubr")
+
+allClin <- merge(select(densityInterByImage, -image, -pad, -tum_percent), clinData, by = "id")
+
+ggscatter(allClin, x = "replacement_percent", y = "density_interacts", 
+          #add = "reg.line", conf.int = TRUE, 
+          #cor.coef = TRUE, cor.method = "pearson",
+          xlab = "percentage replacement growth pattern", ylab = "number of CK7-CK20 interactions/area viable tumor")
+
+#Question: distance in different growth pattern
 ```
 
