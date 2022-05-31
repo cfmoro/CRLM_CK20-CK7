@@ -296,9 +296,31 @@ nrow(intData %>% filter(dist_to_tumborder > 8500))
 # 8.5 cm could be initial max dist, recheck when complete data 
 intData <- intData %>% filter(dist_to_tumborder < 8500)
 
+# Show distance distribution per image
 boxplot(intData$dist_to_tumborder ~ intData$image, 
         horizontal = TRUE)
 hist(intData$dist_to_tumborder, breaks = 100)
+
+# Merge clinical data to the distance distribution dataframe
+distClinLong <- intData %>% rename(pad_ck = image) 
+distClinLong <- merge(distClinLong, clinData, by = "pad_ck")
+
+# Explore distribution of interaction distance to tumor border grouped by neoadjuvant chemotherapy, % tumor regression, time progression, image identifier 
+boxplot(distClinLong$dist_to_tumborder ~ distClinLong$neoadjuvant, 
+        horizontal = TRUE)
+boxplot(distClinLong$dist_to_tumborder ~ distClinLong$tum_percent, 
+        horizontal = TRUE)
+boxplot(distClinLong$dist_to_tumborder ~ distClinLong$time_fu_prog, 
+        horizontal = TRUE, 
+        fill = "neoadjuvant")
+ggplot(distClinLong, aes(dist_to_tumborder, fill=neoadjuvant)) +
+  geom_boxplot()
+ggplot(distClinLong, aes(x=dist_to_tumborder)) + geom_histogram(binwidth=.5, colour="black", fill="white") +
+  facet_grid(neoadjuvant ~ .)
+ggplot(distClinLong, aes(x=dist_to_tumborder)) + geom_histogram(binwidth=.5, colour="black", fill="white") +
+  facet_grid(tum_percent ~ .)
+ggplot(distClinLong, aes(x=dist_to_tumborder)) + geom_histogram(binwidth=.5, colour="black", fill="white") +
+  facet_grid(pad_ck ~ .)
 
 # Cut interaction distances to tumor boder into bins
 # set up cut-off values 
@@ -344,11 +366,26 @@ library("ggpubr")
 
 allClin <- merge(select(densityInterByImage, -image, -pad, -tum_percent), clinData, by = "id")
 
+# % replacement growth pattern with density of interactions
 ggscatter(allClin, x = "replacement_percent", y = "density_interacts", 
           #add = "reg.line", conf.int = TRUE, 
           #cor.coef = TRUE, cor.method = "pearson",
           xlab = "percentage replacement growth pattern", ylab = "number of CK7-CK20 interactions/area viable tumor")
 
-#Question: distance in different growth pattern
+# % replacement growth pattern with neoadjuvant chemotherapy
+ggscatter(allClin, x = "replacement_percent", y = "neoadjuvant", 
+          #add = "reg.line", conf.int = TRUE, 
+          #cor.coef = TRUE, cor.method = "pearson",
+          xlab = "percentage replacement growth pattern", ylab = "neoadjuvant chemotherapy (N/Y)")
+
+# waterfall plot, y axis showing number or density of interactions for each patient 
+o <- order(allClin$density_interacts,decreasing=TRUE,na.last=NA)
+allClin.ordered <- allClin[o,]
+
+col.Water <- ifelse(allClin.ordered$neoadjuvant == "Y", "#BC5A42", "#009296")
+barplot(allClin.ordered$density_interacts, col=col.Water, border=col.Water, space=0.5,
+main = "Density of CK7-CK20 interactions", ylab="number of CK7-CK20 interactions/area viable tumor",
+cex.axis=1.2, cex.lab=1.4, legend.text=c("Neoadjuvant","Chemonaive"),
+args.legend=list(fill=c("#BC5A42","#009296"), border=NA, cex=0.9))
 ```
 
