@@ -542,3 +542,57 @@ abline(h=c(-250,-500,-750,-1000), lty=3, lwd=0.5)
 
 points(subset(allClin.ordered.prog, replacement_percent >= 5)$replacement_percent*30)
 ```
+
+Compare number of CK7-CK20 interactions in cases that showed progression after 1000 days vs no progression after 1000 days 
+```{r}
+# Plot progression-free days versus % replacement 
+ggscatter(allClin, x = "time_fu_prog", y = "replacement_percent", color = "neoadjuvant", size = "density_interacts", alpha = 0.5) + geom_hline(yintercept = 5, linetype = "dashed") + scale_size(range = c(0.5,12))
+
+# Comparisons between no progress and 1000d progress groups, all samples included
+# Unpaired Wilcox-test
+stat.test.1000d.all <- allClin %>%
+  wilcox_test(
+    density_interacts ~ status_fu_prog, paired = FALSE) %>%
+    add_significance("p")
+print(stat.test.1000d.all)
+# Add statistical test p-values
+# Create the plot
+bxp.all <- ggboxplot(
+  allClin, x = "status_fu_prog", y = "density_interacts",
+  color = "status_fu_prog", palette = "jco", add = "dotplot"
+  ) + ggtitle("all Cases, n=", nrow(allClin))
+# Add statistical test p-values
+stat.test2.all <- stat.test.1000d.all %>% add_xy_position(x = "")
+p.all <- bxp.all + stat_pvalue_manual(label = "p={round(p,3)} {p.signif}",
+  stat.test2.all, tip.length = 0) 
+print(p.all)
+# Effect sizes
+eff_size.all <- allClin %>%
+  wilcox_effsize(
+    density_interacts ~ status_fu_prog, paired = FALSE)
+print(eff_size.all)
+
+# Comparisons between no progress and 1000d progress groups, only samples > 5% replacement
+# Unpaired Wilcox-test
+stat.test.1000d.repl <- subset(allClin, replacement_percent >= 5) %>%
+  wilcox_test(
+    density_interacts ~ status_fu_prog, paired = FALSE) %>%
+    add_significance("p")
+print(stat.test.1000d.repl)
+# Add statistical test p-values
+# Create the plot
+bxp.repl <- ggboxplot(
+  subset(allClin, replacement_percent >= 5), x = "status_fu_prog", y = "density_interacts",
+  color = "status_fu_prog", palette = "jco", add = "dotplot"
+  ) + ggtitle("Cases with > 5% replacement, n=", nrow(subset(allClin, replacement_percent >= 5)))
+# Add statistical test p-values
+stat.test2.repl <- stat.test.1000d.repl %>% add_xy_position(x = "")
+p.repl <- bxp.repl + stat_pvalue_manual(label = "p={round(p,3)} {p.signif}",
+  stat.test2.repl, tip.length = 0) 
+print(p.repl)
+# Effect sizes
+eff_size.repl <- subset(allClin, replacement_percent >= 5) %>%
+  wilcox_effsize(
+    density_interacts ~ status_fu_prog, paired = FALSE)
+print(eff_size.repl)
+```
